@@ -1,0 +1,21 @@
+
+CUSTOM DIRECTORIES INSTALLATION
+===============================
+
+Considering you want to build asn1c and install it under the custom directory
+${DST}, it is necessary to tell asn1c of that directory so that it will be able
+to install files from that location.
+
+The right way to do so is to provide the directory that directory at the
+configuration step (with the --prefix option) BUT NOT at the installation step
+(with the DESTDIR option).
+
+autoreconf -iv
+./configure --prefix=${DST} --enable-{static,shared}
+make
+make check
+make install
+
+--
+Jean-Francois SMIGIELSKI
+jean-francois@openio.io

@@ -761,6 +761,94 @@ INTEGER_encode_uper(asn_TYPE_descriptor_t *td,
 
 #endif	/* ASN_DISABLE_PER_SUPPORT */
 
+/*
+ * This function is going to be DEPRECATED soon.
+ */
+enum asn_strtol_result_e
+asn_strtol(const char *str, const char *end, long *lp) {
+    const char *endp = end;
+
+    switch(asn_strtol_lim(str, &endp, lp)) {
+    case ASN_STRTOL_ERROR_RANGE:
+        return ASN_STRTOL_ERROR_RANGE;
+    case ASN_STRTOL_ERROR_INVAL:
+        return ASN_STRTOL_ERROR_INVAL;
+    case ASN_STRTOL_EXPECT_MORE:
+        return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
+    case ASN_STRTOL_OK:
+        return ASN_STRTOL_OK;
+    case ASN_STRTOL_EXTRA_DATA:
+        return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
+    }
+
+    return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
+}
+
+/*
+ * Parse the number in the given string until the given *end position,
+ * returning the position after the last parsed character back using the
+ * same (*end) pointer.
+ * WARNING: This behavior is different from the standard strtol(3).
+ */
+enum asn_strtol_result_e
+asn_strtol_lim(const char *str, const char **end, long *lp) {
+	int sign = 1;
+	long l;
+
+	const long upper_boundary = LONG_MAX / 10;
+	long last_digit_max = LONG_MAX % 10;
+
+	if(str >= *end) return ASN_STRTOL_ERROR_INVAL;
+
+	switch(*str) {
+	case '-':
+		last_digit_max++;
+		sign = -1;
+	case '+':
+		str++;
+		if(str >= *end) {
+			*end = str;
+			return ASN_STRTOL_EXPECT_MORE;
+		}
+	}
+
+	for(l = 0; str < (*end); str++) {
+		switch(*str) {
+		case 0x30: case 0x31: case 0x32: case 0x33: case 0x34:
+		case 0x35: case 0x36: case 0x37: case 0x38: case 0x39: {
+			int d = *str - '0';
+			if(l < upper_boundary) {
+				l = l * 10 + d;
+			} else if(l == upper_boundary) {
+				if(d <= last_digit_max) {
+					if(sign > 0) {
+						l = l * 10 + d;
+					} else {
+						sign = 1;
+						l = -l * 10 - d;
+					}
+				} else {
+					*end = str;
+					return ASN_STRTOL_ERROR_RANGE;
+				}
+			} else {
+				*end = str;
+				return ASN_STRTOL_ERROR_RANGE;
+			}
+		    }
+		    continue;
+		default:
+		    *end = str;
+		    *lp = sign * l;
+		    return ASN_STRTOL_EXTRA_DATA;
+		}
+	}
+
+	*end = str;
+	*lp = sign * l;
+	return ASN_STRTOL_OK;
+}
+
 int
 asn_INTEGER2long(const INTEGER_t *iptr, long *lptr) {
 	uint8_t *b, *end;
@@ -933,91 +1021,278 @@ asn_long2INTEGER(INTEGER_t *st, long value) {
 	return 0;
 }
 
-/*
- * This function is going to be DEPRECATED soon.
- */
-enum asn_strtol_result_e
-asn_strtol(const char *str, const char *end, long *lp) {
-    const char *endp = end;
+/* ------------------------------------------------------------------------- */
 
-    switch(asn_strtol_lim(str, &endp, lp)) {
-    case ASN_STRTOL_ERROR_RANGE:
-        return ASN_STRTOL_ERROR_RANGE;
-    case ASN_STRTOL_ERROR_INVAL:
-        return ASN_STRTOL_ERROR_INVAL;
-    case ASN_STRTOL_EXPECT_MORE:
-        return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
-    case ASN_STRTOL_OK:
-        return ASN_STRTOL_OK;
-    case ASN_STRTOL_EXTRA_DATA:
-        return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
-    }
+int
+asn_INTEGER_to_int64(const INTEGER_t *iptr, int64_t *pI64)
+{
+	uint8_t *b, *end;
+	size_t size;
+	int64_t ll;
 
-    return ASN_STRTOL_ERROR_INVAL;  /* Retain old behavior */
-}
-
-/*
- * Parse the number in the given string until the given *end position,
- * returning the position after the last parsed character back using the
- * same (*end) pointer.
- * WARNING: This behavior is different from the standard strtol(3).
- */
-enum asn_strtol_result_e
-asn_strtol_lim(const char *str, const char **end, long *lp) {
-	int sign = 1;
-	long l;
-
-	const long upper_boundary = LONG_MAX / 10;
-	long last_digit_max = LONG_MAX % 10;
-
-	if(str >= *end) return ASN_STRTOL_ERROR_INVAL;
-
-	switch(*str) {
-	case '-':
-		last_digit_max++;
-		sign = -1;
-	case '+':
-		str++;
-		if(str >= *end) {
-			*end = str;
-			return ASN_STRTOL_EXPECT_MORE;
-		}
+	/* Sanity checking */
+	if(!iptr || !iptr->buf || !pI64) {
+		errno = EINVAL;
+		return -1;
 	}
 
-	for(l = 0; str < (*end); str++) {
-		switch(*str) {
-		case 0x30: case 0x31: case 0x32: case 0x33: case 0x34:
-		case 0x35: case 0x36: case 0x37: case 0x38: case 0x39: {
-			int d = *str - '0';
-			if(l < upper_boundary) {
-				l = l * 10 + d;
-			} else if(l == upper_boundary) {
-				if(d <= last_digit_max) {
-					if(sign > 0) {
-						l = l * 10 + d;
-					} else {
-						sign = 1;
-						l = -l * 10 - d;
-					}
-				} else {
-					*end = str;
-					return ASN_STRTOL_ERROR_RANGE;
-				}
-			} else {
-				*end = str;
-				return ASN_STRTOL_ERROR_RANGE;
+	/* Cache the begin/end of the buffer */
+	b = iptr->buf;  /* Start of the INTEGER buffer */
+	size = iptr->size;
+	end = b + size; /* Where to stop */
+
+	if(size > sizeof(ll)) {
+		uint8_t *end1 = end - 1;
+		/* Slightly more advanced processing,
+		 * able to >sizeof(long) bytes,
+		 * when the actual value is small
+		 * (0x0000000000abcdef would yield a fine 0x00abcdef)
+		 */
+		/* Skip out the insignificant leading bytes */
+		for(; b < end1; b++) {
+			switch(*b) {
+				case 0x00: if((b[1] & 0x80) == 0) continue; break;
+				case 0xff: if((b[1] & 0x80) != 0) continue; break;
 			}
-		    }
-		    continue;
-		default:
-		    *end = str;
-		    *lp = sign * l;
-		    return ASN_STRTOL_EXTRA_DATA;
+			break;
+		}
+
+		size = end - b;
+		if(size > sizeof(ll)) {
+			/* Still cannot fit the long */
+			errno = ERANGE;
+			return -1;
 		}
 	}
 
-	*end = str;
-	*lp = sign * l;
-	return ASN_STRTOL_OK;
+	/* Shortcut processing of a corner case */
+	if(end == b) {
+		*pI64 = 0;
+		return 0;
+	}
+
+	/* Perform the sign initialization */
+	/* Actually ll = -(*b >> 7); gains nothing, yet unreadable! */
+	if((*b >> 7)) ll = -1; else ll = 0;
+
+	/* Conversion engine */
+	for(; b < end; b++)
+		ll = (ll << 8) | *b;
+
+	*pI64 = ll;
+	return 0;
 }
 
+int
+asn_INTEGER_to_int32(const INTEGER_t *st, int32_t *pI32)
+{
+	int64_t i64=0;
+	if (!pI32 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>INT32_MAX || i64<INT32_MIN) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pI32 = i64;
+	return 0;
+}
+
+int
+asn_INTEGER_to_uint32(const INTEGER_t *st, uint32_t *pU32)
+{
+	int64_t i64=0;
+	if (!pU32 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>UINT32_MAX || i64<0) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pU32 = i64;
+	return 0;
+}
+
+int
+asn_INTEGER_to_int16(const INTEGER_t *st, int16_t *pI16)
+{
+	int64_t i64=0;
+	if (!pI16 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>INT16_MAX || i64<INT16_MIN) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pI16 = i64;
+	return 0;
+}
+
+int
+asn_INTEGER_to_uint16(const INTEGER_t *st, uint16_t *pU16)
+{
+	int64_t i64=0;
+	if (!pU16 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>UINT16_MAX || i64<0) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pU16 = i64;
+	return 0;
+}
+
+int
+asn_INTEGER_to_int8(const INTEGER_t *st, int8_t *pI8)
+{
+	int64_t i64=0;
+	if (!pI8 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>INT8_MAX || i64<INT8_MIN) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pI8 = i64;
+	return 0;
+}
+
+int
+asn_INTEGER_to_uint8(const INTEGER_t *st, uint8_t *pU8)
+{
+	int64_t i64=0;
+	if (!pU8 || !st) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (-1==asn_INTEGER_to_int64(st,&i64))
+		return -1;
+	if (i64>UINT8_MAX || i64<0) {
+		errno=ERANGE;
+		return -1;
+	}
+	*pU8 = i64;
+	return 0;
+}
+
+static int
+asn_intX_to_INTEGER(INTEGER_t *st, void* pValue, size_t valueSize)
+{
+	uint8_t *buf, *bp;
+	uint8_t *p;
+	uint8_t *pstart;
+	uint8_t *pend1;
+	int littleEndian = 1;   /* Run-time detection */
+	int add;
+
+	if(!st) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (!pValue || valueSize>8 || valueSize<1) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	buf = (uint8_t *)MALLOC(valueSize);
+	if(!buf) return -1;
+
+	if(*(char *)&littleEndian) {
+		pstart = (uint8_t *)pValue + valueSize - 1;
+		pend1 = (uint8_t *)pValue;
+		add = -1;
+	} else {
+		pstart = (uint8_t *)pValue;
+		pend1 = pstart + valueSize - 1;
+		add = 1;
+	}
+
+	/*
+	 * If the contents octet consists of more than one octet,
+	 * then bits of the first octet and bit 8 of the second octet:
+	 * a) shall not all be ones; and
+	 * b) shall not all be zero.
+	 */
+	for(p = pstart; p != pend1; p += add) {
+		switch(*p) {
+			case 0x00: if((*(p+add) & 0x80) == 0)
+						   continue;
+					   break;
+			case 0xff: if((*(p+add) & 0x80))
+						   continue;
+					   break;
+		}
+		break;
+	}
+	/* Copy the integer body */
+	for(pstart = p, bp = buf, pend1 += add; p != pend1; p += add)
+		*bp++ = *p;
+
+	if(st->buf) FREEMEM(st->buf);
+	st->buf = buf;
+	st->size = bp - buf;
+
+	return 0;
+}
+
+int
+asn_int64_to_INTEGER (INTEGER_t *st, int64_t v)
+{
+	return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+int
+asn_int32_to_INTEGER (INTEGER_t *st, int32_t v)
+{
+	return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+int
+asn_int16_to_INTEGER (INTEGER_t *st, int16_t v)
+{
+	return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+int
+asn_int8_to_INTEGER (INTEGER_t *st, int8_t v)
+{
+	return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+int
+asn_uint32_to_INTEGER (INTEGER_t *st, uint32_t v)
+{
+	int64_t i64 = v;
+	return asn_intX_to_INTEGER(st, &i64, sizeof(i64));
+}
+
+int
+asn_uint16_to_INTEGER (INTEGER_t *st, uint16_t v)
+{
+	int32_t i32 = v;
+	return asn_intX_to_INTEGER(st, &i32, sizeof(i32));
+}
+
+int
+asn_uint8_to_INTEGER (INTEGER_t *st, uint8_t v)
+{
+	int16_t i16 = v;
+	return asn_intX_to_INTEGER(st, &i16, sizeof(i16));
+}

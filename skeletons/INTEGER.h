@@ -75,6 +75,26 @@ enum asn_strtol_result_e asn_strtol(const char *str, const char *end, long *l);
  */
 const asn_INTEGER_enum_map_t *INTEGER_map_value2enum(asn_INTEGER_specifics_t *specs, long value);
 
+#include <stdint.h>
+
+int asn_INTEGER_to_int64 (const INTEGER_t *st, int64_t *pv);
+int asn_INTEGER_to_int32 (const INTEGER_t *st, int32_t *pv);
+int asn_INTEGER_to_int16 (const INTEGER_t *st, int16_t *pv);
+int asn_INTEGER_to_int8  (const INTEGER_t *st, int8_t  *pv);
+
+int asn_INTEGER_to_uint32 (const INTEGER_t *st, uint32_t *pv);
+int asn_INTEGER_to_uint16 (const INTEGER_t *st, uint16_t *pv);
+int asn_INTEGER_to_uint8  (const INTEGER_t *st, uint8_t  *pv);
+
+int asn_int64_to_INTEGER (INTEGER_t *st, int64_t v);
+int asn_int32_to_INTEGER (INTEGER_t *st, int32_t v);
+int asn_int16_to_INTEGER (INTEGER_t *st, int16_t v);
+int asn_int8_to_INTEGER  (INTEGER_t *st, int8_t  v);
+
+int asn_uint32_to_INTEGER (INTEGER_t *st, uint32_t v);
+int asn_uint16_to_INTEGER (INTEGER_t *st, uint16_t v);
+int asn_uint8_to_INTEGER  (INTEGER_t *st, uint8_t  v);
+
 #ifdef __cplusplus
 }
 #endif

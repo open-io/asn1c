@@ -7,10 +7,13 @@ AC_CONFIG_MACRO_DIR([m4])
 
 AM_MAINTAINER_MODE
 
+AM_PROG_AR
+
 AM_PROG_LIBTOOL
 
 dnl Checks for programs.
 AC_PROG_CC
+AM_PROG_CC_C_O
 AC_PROG_CPP
 AC_PROG_INSTALL
 AC_PROG_LN_S
@@ -115,6 +118,7 @@ examples/Makefile			\
 asn1c/Makefile				\
 doc/Makefile				\
 asn1c.spec				\
+asn1c.pc				\
 Makefile				\
 )
 
