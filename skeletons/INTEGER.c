@@ -761,178 +761,6 @@ INTEGER_encode_uper(asn_TYPE_descriptor_t *td,
 
 #endif	/* ASN_DISABLE_PER_SUPPORT */
 
-int
-asn_INTEGER2long(const INTEGER_t *iptr, long *lptr) {
-	uint8_t *b, *end;
-	size_t size;
-	long l;
-
-	/* Sanity checking */
-	if(!iptr || !iptr->buf || !lptr) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	/* Cache the begin/end of the buffer */
-	b = iptr->buf;	/* Start of the INTEGER buffer */
-	size = iptr->size;
-	end = b + size;	/* Where to stop */
-
-	if(size > sizeof(long)) {
-		uint8_t *end1 = end - 1;
-		/*
-		 * Slightly more advanced processing,
-		 * able to >sizeof(long) bytes,
-		 * when the actual value is small
-		 * (0x0000000000abcdef would yield a fine 0x00abcdef)
-		 */
-		/* Skip out the insignificant leading bytes */
-		for(; b < end1; b++) {
-			switch(*b) {
-			case 0x00: if((b[1] & 0x80) == 0) continue; break;
-			case 0xff: if((b[1] & 0x80) != 0) continue; break;
-			}
-			break;
-		}
-
-		size = end - b;
-		if(size > sizeof(long)) {
-			/* Still cannot fit the long */
-			errno = ERANGE;
-			return -1;
-		}
-	}
-
-	/* Shortcut processing of a corner case */
-	if(end == b) {
-		*lptr = 0;
-		return 0;
-	}
-
-	/* Perform the sign initialization */
-	/* Actually l = -(*b >> 7); gains nothing, yet unreadable! */
-	if((*b >> 7)) l = -1; else l = 0;
-
-	/* Conversion engine */
-	for(; b < end; b++)
-		l = (l << 8) | *b;
-
-	*lptr = l;
-	return 0;
-}
-
-int
-asn_INTEGER2ulong(const INTEGER_t *iptr, unsigned long *lptr) {
-	uint8_t *b, *end;
-	unsigned long l;
-	size_t size;
-
-	if(!iptr || !iptr->buf || !lptr) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	b = iptr->buf;
-	size = iptr->size;
-	end = b + size;
-
-	/* If all extra leading bytes are zeroes, ignore them */
-	for(; size > sizeof(unsigned long); b++, size--) {
-		if(*b) {
-			/* Value won't fit unsigned long */
-			errno = ERANGE;
-			return -1;
-		}
-	}
-
-	/* Conversion engine */
-	for(l = 0; b < end; b++)
-		l = (l << 8) | *b;
-
-	*lptr = l;
-	return 0;
-}
-
-int
-asn_ulong2INTEGER(INTEGER_t *st, unsigned long value) {
-	uint8_t *buf;
-	uint8_t *end;
-	uint8_t *b;
-	int shr;
-
-	if(value <= LONG_MAX)
-		return asn_long2INTEGER(st, value);
-
-	buf = (uint8_t *)MALLOC(1 + sizeof(value));
-	if(!buf) return -1;
-
-	end = buf + (sizeof(value) + 1);
-	buf[0] = 0;
-	for(b = buf + 1, shr = (sizeof(long)-1)*8; b < end; shr -= 8, b++)
-		*b = (uint8_t)(value >> shr);
-
-	if(st->buf) FREEMEM(st->buf);
-	st->buf = buf;
-	st->size = 1 + sizeof(value);
-
-	return 0;
-}
-
-int
-asn_long2INTEGER(INTEGER_t *st, long value) {
-	uint8_t *buf, *bp;
-	uint8_t *p;
-	uint8_t *pstart;
-	uint8_t *pend1;
-	int littleEndian = 1;	/* Run-time detection */
-	int add;
-
-	if(!st) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	buf = (uint8_t *)MALLOC(sizeof(value));
-	if(!buf) return -1;
-
-	if(*(char *)&littleEndian) {
-		pstart = (uint8_t *)&value + sizeof(value) - 1;
-		pend1 = (uint8_t *)&value;
-		add = -1;
-	} else {
-		pstart = (uint8_t *)&value;
-		pend1 = pstart + sizeof(value) - 1;
-		add = 1;
-	}
-
-	/*
-	 * If the contents octet consists of more than one octet,
-	 * then bits of the first octet and bit 8 of the second octet:
-	 * a) shall not all be ones; and
-	 * b) shall not all be zero.
-	 */
-	for(p = pstart; p != pend1; p += add) {
-		switch(*p) {
-		case 0x00: if((*(p+add) & 0x80) == 0)
-				continue;
-			break;
-		case 0xff: if((*(p+add) & 0x80))
-				continue;
-			break;
-		}
-		break;
-	}
-	/* Copy the integer body */
-	for(pstart = p, bp = buf, pend1 += add; p != pend1; p += add)
-		*bp++ = *p;
-
-	if(st->buf) FREEMEM(st->buf);
-	st->buf = buf;
-	st->size = bp - buf;
-
-	return 0;
-}
-
 /*
  * This function is going to be DEPRECATED soon.
  */
@@ -1019,5 +847,256 @@ asn_strtol_lim(const char *str, const char **end, long *lp) {
 	*end = str;
 	*lp = sign * l;
 	return ASN_STRTOL_OK;
+}
+
+#define TOINT(R,Min,Max) \
+    int64_t i64=0; \
+    if (!R || !st) { errno = EINVAL; return -1; } \
+    if (-1==asn_INTEGER_to_int64(st,&i64)) return -1; \
+    if (i64>Max || i64<Min) { errno=ERANGE; return -1; } \
+    (R) = i64; \
+    return 0
+
+int
+asn_INTEGER2long(const INTEGER_t *st, long *lptr)
+{
+	TOINT(*lptr,INT32_MIN,INT32_MAX);
+}
+
+int
+asn_INTEGER2ulong(const INTEGER_t *st, unsigned long *lptr)
+{
+	TOINT(*lptr,0,UINT32_MAX);
+}
+
+int
+asn_ulong2INTEGER(INTEGER_t *st, unsigned long value)
+{
+	return asn_int64_to_INTEGER(st, value);
+}
+
+int
+asn_long2INTEGER(INTEGER_t *st, long value)
+{
+	return asn_int64_to_INTEGER(st, value);
+}
+
+
+int
+asn_INTEGER_to_int64(const INTEGER_t *iptr, int64_t *pI64)
+{
+    uint8_t *b, *end;
+    size_t size;
+    int64_t ll;
+
+    /* Sanity checking */
+    if(!iptr || !iptr->buf || !pI64) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    /* Cache the begin/end of the buffer */
+    b = iptr->buf;  /* Start of the INTEGER buffer */
+    size = iptr->size;
+    end = b + size; /* Where to stop */
+
+    if(size > sizeof(ll)) {
+        uint8_t *end1 = end - 1;
+        /*
+         * Slightly more advanced processing,
+         * able to >sizeof(long) bytes,
+         * when the actual value is small
+         * (0x0000000000abcdef would yield a fine 0x00abcdef)
+         */
+        /* Skip out the insignificant leading bytes */
+        for(; b < end1; b++) {
+            switch(*b) {
+            case 0x00: if((b[1] & 0x80) == 0) continue; break;
+            case 0xff: if((b[1] & 0x80) != 0) continue; break;
+            }
+            break;
+        }
+
+        size = end - b;
+        if(size > sizeof(ll)) {
+            /* Still cannot fit the long */
+            errno = ERANGE;
+            return -1;
+        }
+    }
+
+    /* Shortcut processing of a corner case */
+    if(end == b) {
+        *pI64 = 0;
+        return 0;
+    }
+
+    /* Perform the sign initialization */
+    /* Actually ll = -(*b >> 7); gains nothing, yet unreadable! */
+    if((*b >> 7)) ll = -1; else ll = 0;
+
+    /* Conversion engine */
+    for(; b < end; b++)
+        ll = (ll << 8) | *b;
+
+    *pI64 = ll;
+    return 0;
+}
+
+
+int
+asn_INTEGER_to_int32(const INTEGER_t *st, int32_t *pI32)
+{
+	TOINT(*pI32,INT32_MIN,INT32_MAX);
+}
+
+
+int
+asn_INTEGER_to_uint32(const INTEGER_t *st, uint32_t *pU32)
+{
+	TOINT(*pU32,0,UINT32_MAX);
+}
+
+
+int
+asn_INTEGER_to_int16(const INTEGER_t *st, int16_t *pI16)
+{
+    TOINT(*pI16,INT16_MIN,INT16_MAX);
+}
+
+
+int
+asn_INTEGER_to_uint16(const INTEGER_t *st, uint16_t *pU16)
+{
+    TOINT(*pU16,0,UINT16_MAX);
+}
+
+
+int
+asn_INTEGER_to_int8(const INTEGER_t *st, int8_t *pI8)
+{
+    TOINT(*pI8,INT8_MIN,INT8_MAX);
+}
+
+
+int
+asn_INTEGER_to_uint8(const INTEGER_t *st, uint8_t *pU8)
+{
+    TOINT(*pU8,0,UINT8_MAX);
+}
+
+
+static
+int
+asn_intX_to_INTEGER(INTEGER_t *st, void* pValue, size_t valueSize)
+{
+    uint8_t *buf, *bp;
+    uint8_t *p;
+    uint8_t *pstart;
+    uint8_t *pend1;
+    int littleEndian = 1;   /* Run-time detection */
+    int add;
+
+    if(!st) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!pValue || valueSize>8 || valueSize<1) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    buf = (uint8_t *)MALLOC(valueSize);
+    if(!buf) return -1;
+
+    if(*(char *)&littleEndian) {
+        pstart = (uint8_t *)pValue + valueSize - 1;
+        pend1 = (uint8_t *)pValue;
+        add = -1;
+    } else {
+        pstart = (uint8_t *)pValue;
+        pend1 = pstart + valueSize - 1;
+        add = 1;
+    }
+
+    /*
+     * If the contents octet consists of more than one octet,
+     * then bits of the first octet and bit 8 of the second octet:
+     * a) shall not all be ones; and
+     * b) shall not all be zero.
+     */
+    for(p = pstart; p != pend1; p += add) {
+        switch(*p) {
+            case 0x00: if((*(p+add) & 0x80) == 0)
+                           continue;
+                       break;
+            case 0xff: if((*(p+add) & 0x80))
+                           continue;
+                       break;
+        }
+        break;
+    }
+    /* Copy the integer body */
+    for(pstart = p, bp = buf, pend1 += add; p != pend1; p += add)
+        *bp++ = *p;
+
+    if(st->buf) FREEMEM(st->buf);
+    st->buf = buf;
+    st->size = bp - buf;
+
+    return 0;
+}
+
+
+int
+asn_int64_to_INTEGER (INTEGER_t *st, int64_t v)
+{
+    return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+
+int
+asn_int32_to_INTEGER (INTEGER_t *st, int32_t v)
+{
+    return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+
+int
+asn_int16_to_INTEGER (INTEGER_t *st, int16_t v)
+{
+    return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+
+int
+asn_int8_to_INTEGER (INTEGER_t *st, int8_t v)
+{
+    return asn_intX_to_INTEGER(st, &v, sizeof(v));
+}
+
+
+int
+asn_uint32_to_INTEGER (INTEGER_t *st, uint32_t v)
+{
+    int64_t i64 = v;
+    return asn_intX_to_INTEGER(st, &i64, sizeof(i64));
+}
+
+
+int
+asn_uint16_to_INTEGER (INTEGER_t *st, uint16_t v)
+{
+    int32_t i32 = v;
+    return asn_intX_to_INTEGER(st, &i32, sizeof(i32));
+}
+
+
+int
+asn_uint8_to_INTEGER (INTEGER_t *st, uint8_t v)
+{
+    int16_t i16 = v;
+    return asn_intX_to_INTEGER(st, &i16, sizeof(i16));
 }
 
